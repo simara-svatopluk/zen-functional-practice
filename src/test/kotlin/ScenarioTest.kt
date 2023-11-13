@@ -23,11 +23,15 @@ class TodoListOwner(override val name: String) : ScenarioActor {
 }
 
 interface ApplicationForTests {
+    val server: AutoCloseable
+
     fun listOfLists(user: User): List<ToDoList>
     fun todoList(listId: Pair<User, ListName>): ToDoList
 
     fun runScenario(steps: (ApplicationForTests) -> Unit) {
-        steps(this)
+        server.use {
+            steps(this)
+        }
     }
 }
 
@@ -63,6 +67,8 @@ class AppApplicationForTests(
     val forListOfLists: ForListOfLists,
     val forTodoList: ForTodoList,
 ) : ApplicationForTests {
+    override val server = AutoCloseable { }
+
     override fun listOfLists(user: User): List<ToDoList> = forListOfLists(user)
     override fun todoList(listId: Pair<User, ListName>): ToDoList = forTodoList(listId)
 }
@@ -78,7 +84,7 @@ class ApplicationScenarioTest : ScenarioTest() {
 
 class HttpApplicationForTests(
     private val client: HttpHandler,
-    private val server: AutoCloseable,
+    override val server: AutoCloseable,
 ) : ApplicationForTests {
     override fun listOfLists(user: User): List<ToDoList> = listOfTodosUrl(user)
         .let(::createGetRequest)
@@ -91,12 +97,6 @@ class HttpApplicationForTests(
         .let(client)
         .body.toString()
         .let(::parseTodoList)
-
-    override fun runScenario(steps: (ApplicationForTests) -> Unit) {
-        server.use {
-            steps(this)
-        }
-    }
 
     private fun todoListUrl(listId: Pair<User, ListName>): String {
         val (user, listName) = listId
@@ -137,7 +137,7 @@ class HttpApplicationForTests(
 class HttpScenarioTest : ScenarioTest() {
     override fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests {
         val httpServer = createHttpApplication(
-            port = 0,
+            port = 8081,
             defaultLists = defaultLists.toMap()
         ).start()
 
