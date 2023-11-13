@@ -1,7 +1,6 @@
 import org.http4k.client.JettyClient
 import org.http4k.core.*
 import org.http4k.filter.ClientFilters
-import org.http4k.server.Http4kServer
 import org.junit.jupiter.api.Test
 import strikt.api.expectThat
 import strikt.assertions.contains
@@ -79,7 +78,7 @@ class ApplicationScenarioTest : ScenarioTest() {
 
 class HttpApplicationForTests(
     private val client: HttpHandler,
-    private val httpServer: Http4kServer,
+    private val server: AutoCloseable,
 ) : ApplicationForTests {
     override fun listOfLists(user: User): List<ToDoList> = listOfTodosUrl(user)
         .let(::createGetRequest)
@@ -94,7 +93,7 @@ class HttpApplicationForTests(
         .let(::parseTodoList)
 
     override fun runScenario(steps: (ApplicationForTests) -> Unit) {
-        httpServer.use {
+        server.use {
             steps(this)
         }
     }
