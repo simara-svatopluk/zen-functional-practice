@@ -10,27 +10,31 @@ interface ScenarioActor {
     val name: String
 }
 
+interface Actions {
+    fun listOfLists(user: User): List<ToDoList>
+    fun todoList(listId: Pair<User, ListName>): ToDoList?
+}
+
+typealias Step = Actions.() -> Unit
+
 class TodoListOwner(override val name: String) : ScenarioActor {
-    fun `can see list of TODOs`(expected: ToDoList, app: ApplicationForTests) {
-        val actual = app.listOfLists(User(name))
+    fun `can see list of TODOs`(expected: ToDoList): Step = {
+        val actual = listOfLists(User(name))
         expectThat(actual).contains(expected)
     }
 
-    fun `can see a TODO list`(listName: ListName, expected: ToDoList, app: ApplicationForTests) {
-        val actual = app.todoList(User(name) to listName)
+    fun `can see a TODO list`(listName: ListName, expected: ToDoList): Step = {
+        val actual = todoList(User(name) to listName)
         expectThat(actual).isEqualTo(expected)
     }
 }
 
-interface ApplicationForTests {
+interface ApplicationForTests : Actions {
     val server: AutoCloseable
 
-    fun listOfLists(user: User): List<ToDoList>
-    fun todoList(listId: Pair<User, ListName>): ToDoList
-
-    fun runScenario(steps: (ApplicationForTests) -> Unit) {
+    fun runScenario(vararg steps: Step) {
         server.use {
-            steps(this)
+            steps.onEach { step -> this.step() }
         }
     }
 }
@@ -41,9 +45,9 @@ abstract class ScenarioTest {
         val me = TodoListOwner("me")
         val todoList = ToDoList(ListName("Home"))
         val app = `application started`(User(me.name) to listOf(todoList))
-        app.runScenario {
-            me.`can see list of TODOs`(todoList, it)
-        }
+        app.runScenario(
+            me.`can see list of TODOs`(todoList),
+        )
     }
 
     @Test
@@ -55,9 +59,9 @@ abstract class ScenarioTest {
         )
         val app = `application started`(User(satan.name) to listOf(todoList))
 
-        app.runScenario {
-            satan.`can see a TODO list`(ListName("home"), todoList, it)
-        }
+        app.runScenario(
+            satan.`can see a TODO list`(ListName("home"), todoList),
+        )
     }
 
     abstract fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests
