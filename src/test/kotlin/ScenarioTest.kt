@@ -1,6 +1,6 @@
 import org.http4k.client.JettyClient
-import org.http4k.core.Method
-import org.http4k.core.Request
+import org.http4k.core.*
+import org.http4k.filter.ClientFilters
 import org.http4k.server.Http4kServer
 import org.junit.jupiter.api.Test
 import strikt.api.expectThat
@@ -26,6 +26,10 @@ class TodoListOwner(override val name: String) : ScenarioActor {
 interface ApplicationForTests {
     fun listOfLists(user: User): List<ToDoList>
     fun todoList(listId: Pair<User, ListName>): ToDoList
+
+    fun runScenario(steps: (ApplicationForTests) -> Unit) {
+        steps(this)
+    }
 }
 
 abstract class ScenarioTest {
@@ -33,9 +37,10 @@ abstract class ScenarioTest {
     fun `can see list of lists`() {
         val me = TodoListOwner("me")
         val todoList = ToDoList(ListName("Home"))
-        val application = `application started`(User(me.name) to listOf(todoList))
-
-        me.`can see list of TODOs`(todoList, application)
+        val app = `application started`(User(me.name) to listOf(todoList))
+        app.runScenario {
+            me.`can see list of TODOs`(todoList, it)
+        }
     }
 
     @Test
@@ -47,21 +52,23 @@ abstract class ScenarioTest {
         )
         val app = `application started`(User(satan.name) to listOf(todoList))
 
-        satan.`can see a TODO list`(ListName("home"), todoList, app)
+        app.runScenario {
+            satan.`can see a TODO list`(ListName("home"), todoList, it)
+        }
     }
 
     abstract fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests
 }
 
-class ApplicationScenarioTest : ScenarioTest() {
-    class AppApplicationForTests(
-        val forListOfLists: ForListOfLists,
-        val forTodoList: ForTodoList,
-    ) : ApplicationForTests {
-        override fun listOfLists(user: User): List<ToDoList> = forListOfLists(user)
-        override fun todoList(listId: Pair<User, ListName>): ToDoList = forTodoList(listId)
-    }
+class AppApplicationForTests(
+    val forListOfLists: ForListOfLists,
+    val forTodoList: ForTodoList,
+) : ApplicationForTests {
+    override fun listOfLists(user: User): List<ToDoList> = forListOfLists(user)
+    override fun todoList(listId: Pair<User, ListName>): ToDoList = forTodoList(listId)
+}
 
+class ApplicationScenarioTest : ScenarioTest() {
     override fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests {
         val forListOfLists = generateForListOfLists(defaultLists.toMap())
         val forTodoList = generateForTodoList(defaultLists.toMap())
@@ -70,64 +77,75 @@ class ApplicationScenarioTest : ScenarioTest() {
     }
 }
 
-class HttpScenarioTest : ScenarioTest() {
-    class HttpApplicationForTests(
-        val httpServer: Http4kServer
-    ) : ApplicationForTests {
+class HttpApplicationForTests(
+    private val client: HttpHandler,
+    private val httpServer: Http4kServer,
+) : ApplicationForTests {
+    override fun listOfLists(user: User): List<ToDoList> = listOfTodosUrl(user)
+        .let(::createGetRequest)
+        .let(client)
+        .body.toString()
+        .let(::parseListOfTodoLists)
 
-        override fun listOfLists(user: User): List<ToDoList> =
-            listOfTodosUrl(user)
-                .let(::createGetRequest)
-                .let(JettyClient())
-                .body.toString()
-                .let(::parseListOfTodoLists)
+    override fun todoList(listId: Pair<User, ListName>) = todoListUrl(listId)
+        .let(::createGetRequest)
+        .let(client)
+        .body.toString()
+        .let(::parseTodoList)
 
-        override fun todoList(listId: Pair<User, ListName>) = todoListUrl(listId)
-            .let(::createGetRequest)
-            .let(JettyClient())
-            .body.toString()
-            .let(::parseTodoList)
-
-        private fun todoListUrl(listId: Pair<User, ListName>): String {
-            val (user, listName) = listId
-
-            return "http://localhost:${httpServer.port()}/${user.name}/${listName.name}/"
+    override fun runScenario(steps: (ApplicationForTests) -> Unit) {
+        httpServer.use {
+            steps(this)
         }
-
-        private fun parseTodoList(body: String): ToDoList {
-            val h1 = parseH1(body)
-
-            val todos = parseLIs(body)
-                .map { ToDoItem(it) }
-
-            return ToDoList(ListName(h1), todos)
-        }
-
-        private fun createGetRequest(url: String): Request = Request(Method.GET, url)
-
-        private fun listOfTodosUrl(user: User) = "http://localhost:${httpServer.port()}/${user.name}/"
-
-        private fun parseListOfTodoLists(body: String): List<ToDoList> = parseLIs(body)
-            .map { ToDoList(ListName(it)) }
-
-        private fun parseLIs(body: String): List<String> = "<li>([^<>]+)</li>"
-            .toRegex()
-            .findAll(body)
-            .map(::singleValue)
-            .toList()
-
-        private fun parseH1(body: String): String = "<h1>([^<>]+)</h1>"
-            .toRegex()
-            .find(body)
-            ?.let(::singleValue)
-            .orEmpty()
-
-        private fun singleValue(matchResult: MatchResult): String = matchResult.destructured.component1()
     }
 
-    override fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests {
-        val httpServer = createHttpApplication(0, defaultLists.toMap()).start()
+    private fun todoListUrl(listId: Pair<User, ListName>): String {
+        val (user, listName) = listId
+        return "/${user.name}/${listName.name}/"
+    }
 
-        return HttpApplicationForTests(httpServer)
+    private fun parseTodoList(body: String): ToDoList {
+        val h1 = parseH1(body)
+
+        val todos = parseLIs(body)
+            .map { ToDoItem(it) }
+
+        return ToDoList(ListName(h1), todos)
+    }
+
+    private fun createGetRequest(url: String): Request = Request(Method.GET, url)
+
+    private fun listOfTodosUrl(user: User) = "/${user.name}/"
+
+    private fun parseListOfTodoLists(body: String): List<ToDoList> = parseLIs(body)
+        .map { ToDoList(ListName(it)) }
+
+    private fun parseLIs(body: String): List<String> = "<li>([^<>]+)</li>"
+        .toRegex()
+        .findAll(body)
+        .map(::singleValue)
+        .toList()
+
+    private fun parseH1(body: String): String = "<h1>([^<>]+)</h1>"
+        .toRegex()
+        .find(body)
+        ?.let(::singleValue)
+        .orEmpty()
+
+    private fun singleValue(matchResult: MatchResult): String = matchResult.destructured.component1()
+}
+
+class HttpScenarioTest : ScenarioTest() {
+    override fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests {
+        val httpServer = createHttpApplication(
+            port = 0,
+            defaultLists = defaultLists.toMap()
+        ).start()
+
+        val client = ClientFilters
+            .SetBaseUriFrom(Uri.of("http://localhost:${httpServer.port()}/"))
+            .then(JettyClient())
+
+        return HttpApplicationForTests(client, httpServer)
     }
 }
