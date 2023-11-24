@@ -1,3 +1,5 @@
+package excercise
+
 import org.junit.jupiter.api.Test
 import strikt.api.expect
 import strikt.api.expectThat
@@ -32,6 +34,7 @@ private fun cashRegister(
 private fun groupShoppingList(items: List<String>) = items
     .groupBy { it }
     .mapValues { (_, v) -> v.size }
+
 
 class DiscountTest {
     private fun randomPrice() = Random.nextDouble()

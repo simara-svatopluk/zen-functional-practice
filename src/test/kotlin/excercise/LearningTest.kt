@@ -1,3 +1,5 @@
+package excercise
+
 import org.junit.jupiter.api.Test
 import strikt.api.expect
 import strikt.api.expectThat
