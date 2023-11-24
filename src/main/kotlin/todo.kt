@@ -22,3 +22,10 @@ fun generateForListOfLists(lists: Map<User, List<ToDoList>> = emptyMap()): ForLi
 fun generateForTodoList(lists: Map<User, List<ToDoList>> = emptyMap()): ForTodoList = { (user, listName) ->
     lists.getValue(user).single { it.name == listName }
 }
+
+class ZenHub(
+    val lists: Map<User, List<ToDoList>> = emptyMap()
+) {
+    fun listOfLists(user: User): List<ToDoList> = generateForListOfLists(lists)(user)
+    fun todoList(listId: Pair<User, ListName>): ToDoList = generateForTodoList(lists)(listId)
+}

@@ -18,6 +18,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     testImplementation("io.strikt:strikt-core:0.34.1")
     testImplementation("org.http4k:http4k-client-jetty:5.9.0.0")
+    testImplementation("com.ubertob.pesticide:pesticide-core:1.6.6")
 }
 
 tasks.test {

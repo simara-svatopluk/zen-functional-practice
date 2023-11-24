@@ -7,21 +7,20 @@ import org.http4k.server.Jetty
 import org.http4k.server.asServer
 
 data class ZenFunctionalHttp(
-    val forListOfLists: ForListOfLists,
-    val forTodoList: ForTodoList
+    val zenHub: ZenHub
 ) : HttpHandler {
     private val routes: HttpHandler = routes(
         "/{user}/" bind Method.GET to { request ->
             request
                 .let(::parseUser)
-                .let(forListOfLists)
+                .let(zenHub::listOfLists)
                 .let(::renderListOfLists)
                 .let(::createResponse)
         },
         "{user}/{list}" bind Method.GET to { request ->
             request
                 .let(::parseListId)
-                .let(forTodoList)
+                .let(zenHub::todoList)
                 .let(::renderTodoList)
                 .let(::createResponse)
         }
@@ -36,7 +35,7 @@ data class ZenFunctionalHttp(
     private fun createResponse(html: String) = Response(Status.OK).body(html)
 
     private fun renderTodoList(toDoList: ToDoList): String {
-        val items = toDoList.items.map { "<li>${it.description}</li>\n" }
+        val items = toDoList.items.map { "<li>${it.description}</li>\n" }.joinToString("")
 
         return """
             <h1>${toDoList.name.name}</h1>
@@ -47,7 +46,7 @@ data class ZenFunctionalHttp(
     }
 
     private fun renderListOfLists(listOfLists: List<ToDoList>): String {
-        val items = listOfLists.map { "<li>${it.name.name}</li>\n" }
+        val items = listOfLists.map { "<li>${it.name.name}</li>\n" }.joinToString("")
 
         return """
             <h1>List of TODOs</h1>
@@ -60,14 +59,22 @@ data class ZenFunctionalHttp(
     override fun invoke(request: Request) = routes(request)
 }
 
-fun createHttpApplication(port: Int = 8080, defaultLists: Map<User, List<ToDoList>> = emptyMap()): Http4kServer {
-    return ZenFunctionalHttp(
-        generateForListOfLists(defaultLists),
-        generateForTodoList(defaultLists),
-    )
+fun createHttpApplication(port: Int = 8080, hub: ZenHub): Http4kServer {
+    return ZenFunctionalHttp(hub)
         .asServer(Jetty(port))
 }
 
 fun main() {
-    createHttpApplication().start()
+    createHttpApplication(
+        hub = ZenHub(
+            mapOf(
+                User("satan") to listOf(
+                    ToDoList(
+                        name = ListName("home"),
+                        items = listOf(ToDoItem("burn house"), ToDoItem("cut tree"))
+                    )
+                )
+            )
+        )
+    ).start()
 }

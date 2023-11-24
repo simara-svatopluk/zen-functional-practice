@@ -1,124 +1,89 @@
+import com.ubertob.pesticide.core.*
 import org.http4k.client.JettyClient
-import org.http4k.core.*
-import org.http4k.filter.ClientFilters
-import org.junit.jupiter.api.Test
+import org.http4k.core.Method
+import org.http4k.core.Request
 import strikt.api.expectThat
-import strikt.assertions.contains
+import strikt.assertions.containsExactlyInAnyOrder
 import strikt.assertions.isEqualTo
 
-interface ScenarioActor {
-    val name: String
-}
+interface ZenActions : DdtActions<DdtProtocol> {
+    fun TodoListOwner.`starts with a list`(toDoList: ToDoList)
 
-interface Actions {
     fun listOfLists(user: User): List<ToDoList>
     fun todoList(listId: Pair<User, ListName>): ToDoList?
 }
 
-typealias Step = Actions.() -> Unit
+typealias ZenDDT = DomainDrivenTest<ZenActions>
 
-class TodoListOwner(override val name: String) : ScenarioActor {
-    fun `can see list of TODOs`(expected: ToDoList): Step = {
-        val actual = listOfLists(User(name))
-        expectThat(actual).contains(expected)
+fun allActions() = setOf(
+    DomainOnlyActions(),
+    HttpActions(),
+)
+
+class DomainOnlyActions : ZenActions {
+    override val protocol: DdtProtocol = DomainOnly
+    override fun prepare(): DomainSetUp = Ready
+
+    private val lists: MutableMap<User, List<ToDoList>> = mutableMapOf()
+    private val hub = ZenHub(lists)
+
+    override fun TodoListOwner.`starts with a list`(toDoList: ToDoList) {
+        lists[user] = listOf(toDoList)
     }
 
-    fun `can see a TODO list`(listName: ListName, expected: ToDoList): Step = {
-        val actual = todoList(User(name) to listName)
-        expectThat(actual).isEqualTo(expected)
-    }
+    override fun listOfLists(user: User): List<ToDoList> = hub.listOfLists(user)
+    override fun todoList(listId: Pair<User, ListName>): ToDoList? = hub.todoList(listId)
 }
 
-interface ApplicationForTests : Actions {
-    val server: AutoCloseable
+class HttpActions(val env: String = "local") : ZenActions {
+    override val protocol: DdtProtocol = Http(env)
 
-    fun runScenario(vararg steps: Step) {
-        server.use {
-            steps.onEach { step -> this.step() }
-        }
-    }
-}
+    private val port = 8081
+    private val lists: MutableMap<User, List<ToDoList>> = mutableMapOf()
+    private val zenHub = ZenHub(lists)
 
-abstract class ScenarioTest {
-    @Test
-    fun `can see list of lists`() {
-        val me = TodoListOwner("me")
-        val todoList = ToDoList(ListName("Home"))
-        val app = `application started`(User(me.name) to listOf(todoList))
-        app.runScenario(
-            me.`can see list of TODOs`(todoList),
-        )
+    private val server = createHttpApplication(port = port, hub = zenHub)
+    private val client = JettyClient()
+
+    override fun TodoListOwner.`starts with a list`(toDoList: ToDoList) {
+        lists[user] = listOf(toDoList)
     }
 
-    @Test
-    fun `can see a user's list`() {
-        val satan = TodoListOwner("satan")
-        val todoList = ToDoList(
-            name = ListName("home"),
-            items = listOf(ToDoItem("burn house"), ToDoItem("cut tree"))
-        )
-        val app = `application started`(User(satan.name) to listOf(todoList))
-
-        app.runScenario(
-            satan.`can see a TODO list`(ListName("home"), todoList),
-        )
+    override fun prepare(): DomainSetUp = Ready.also {
+        server.start()
     }
 
-    abstract fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests
-}
+    override fun tearDown(): HttpActions = also { server.stop() }
 
-class AppApplicationForTests(
-    val forListOfLists: ForListOfLists,
-    val forTodoList: ForTodoList,
-) : ApplicationForTests {
-    override val server = AutoCloseable { }
-
-    override fun listOfLists(user: User): List<ToDoList> = forListOfLists(user)
-    override fun todoList(listId: Pair<User, ListName>): ToDoList = forTodoList(listId)
-}
-
-class ApplicationScenarioTest : ScenarioTest() {
-    override fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests {
-        val forListOfLists = generateForListOfLists(defaultLists.toMap())
-        val forTodoList = generateForTodoList(defaultLists.toMap())
-
-        return AppApplicationForTests(forListOfLists, forTodoList)
-    }
-}
-
-class HttpApplicationForTests(
-    private val client: HttpHandler,
-    override val server: AutoCloseable,
-) : ApplicationForTests {
-    override fun listOfLists(user: User): List<ToDoList> = listOfTodosUrl(user)
+    override fun listOfLists(user: User): List<ToDoList> = listOfTodosPath(user)
         .let(::createGetRequest)
         .let(client)
         .body.toString()
         .let(::parseListOfTodoLists)
 
-    override fun todoList(listId: Pair<User, ListName>) = todoListUrl(listId)
+    override fun todoList(listId: Pair<User, ListName>) = todoListPath(listId)
         .let(::createGetRequest)
         .let(client)
         .body.toString()
         .let(::parseTodoList)
 
-    private fun todoListUrl(listId: Pair<User, ListName>): String {
+    private fun todoListPath(listId: Pair<User, ListName>): String {
         val (user, listName) = listId
-        return "/${user.name}/${listName.name}/"
+        return "${user.name}/${listName.name}/"
     }
 
     private fun parseTodoList(body: String): ToDoList {
-        val h1 = parseH1(body)
+        val listName = parseH1(body).let(::ListName)
 
         val todos = parseLIs(body)
             .map { ToDoItem(it) }
 
-        return ToDoList(ListName(h1), todos)
+        return ToDoList(listName, todos)
     }
 
-    private fun createGetRequest(url: String): Request = Request(Method.GET, url)
+    private fun createGetRequest(path: String): Request = Request(Method.GET, "http://localhost:$port/$path")
 
-    private fun listOfTodosUrl(user: User) = "/${user.name}/"
+    private fun listOfTodosPath(user: User) = "${user.name}/"
 
     private fun parseListOfTodoLists(body: String): List<ToDoList> = parseLIs(body)
         .map { ToDoList(ListName(it)) }
@@ -138,17 +103,45 @@ class HttpApplicationForTests(
     private fun singleValue(matchResult: MatchResult): String = matchResult.destructured.component1()
 }
 
-class HttpScenarioTest : ScenarioTest() {
-    override fun `application started`(vararg defaultLists: Pair<User, List<ToDoList>>): ApplicationForTests {
-        val httpServer = createHttpApplication(
-            port = 8081,
-            defaultLists = defaultLists.toMap()
-        ).start()
+class TodoListOwner(override val name: String) : DdtActor<ZenActions>() {
+    val user = User(name)
 
-        val client = ClientFilters
-            .SetBaseUriFrom(Uri.of("http://localhost:${httpServer.port()}/"))
-            .then(JettyClient())
+    fun `can see list of TODOs #todos`(expected: ToDoList) = step(expected) {
+        val actual = listOfLists(User(name))
+        expectThat(actual).containsExactlyInAnyOrder(expected)
+    }
 
-        return HttpApplicationForTests(client, httpServer)
+    fun `can see #listname with #expected`(listName: ListName, expected: ToDoList) = step(listName, expected) {
+        val actual = todoList(User(name) to listName)
+        expectThat(actual).isEqualTo(expected)
+    }
+}
+
+class ScenarioTest : ZenDDT(allActions()) {
+    val satan by NamedActor(::TodoListOwner)
+    val me by NamedActor(::TodoListOwner)
+
+    val satansTodoList = ToDoList(
+        name = ListName("home"),
+        items = listOf(ToDoItem("burn house"), ToDoItem("cut tree"))
+    )
+    val myTodoList = ToDoList(ListName("Home"))
+
+    @DDT
+    fun `can see list of lists`() = ddtScenario {
+        setUp {
+            me.`starts with a list`(myTodoList)
+        }.thenPlay(
+            me.`can see list of TODOs #todos`(myTodoList),
+        )
+    }
+
+    @DDT
+    fun `can see a user's list`() = ddtScenario {
+        setUp {
+            satan.`starts with a list`(satansTodoList)
+        }.thenPlay(
+            satan.`can see #listname with #expected`(ListName("home"), satansTodoList)
+        )
     }
 }
