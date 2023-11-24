@@ -1,4 +1,5 @@
 import org.http4k.core.*
+import org.http4k.core.body.form
 import org.http4k.routing.bind
 import org.http4k.routing.path
 import org.http4k.routing.routes
@@ -23,8 +24,19 @@ data class ZenFunctionalHttp(
                 .let(zenHub::todoList)
                 .let(::renderTodoList)
                 .let(::createResponse)
-        }
+        },
+
+        "{user}/{list}" bind Method.POST to ::addItemToList
+
     )
+
+    private fun addItemToList(request: Request): Response {
+        val listId = parseListId(request)
+        val item = request.form("description")?.let(::ToDoItem) ?: return Response(Status.BAD_REQUEST)
+
+        zenHub.addItemToList(listId, item)
+        return Response(Status.SEE_OTHER).header("Location", "/${listId.first.name}/${listId.second.name}")
+    }
 
     private fun parseUser(request: Request) = User(request.path("user").orEmpty())
 

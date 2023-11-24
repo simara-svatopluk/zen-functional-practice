@@ -15,11 +15,20 @@ enum class TodoStatus {
 
 typealias ForListOfLists = (User) -> List<ToDoList>
 typealias ForTodoList = (Pair<User, ListName>) -> ToDoList
+typealias ForAddingItem = (Pair<User, ListName>, ToDoItem) -> Unit
 
-fun generateForListOfLists(lists: Map<User, List<ToDoList>> = emptyMap()): ForListOfLists = { user ->
-    lists.getValue(user)
+fun generateForListOfLists(storage: Storage): ForListOfLists = { user ->
+    storage(user)
 }
 
-fun generateForTodoList(lists: Map<User, List<ToDoList>> = emptyMap()): ForTodoList = { (user, listName) ->
-    lists.getValue(user).single { it.name == listName }
+fun generateForTodoList(storage: Storage): ForTodoList = { (user, listName) ->
+    storage(user).single { it.name == listName }
+}
+
+fun generateForAddingItem(storage: Storage): ForAddingItem = { listId, todoItem ->
+    storage.addItemToList(listId, todoItem)
+}
+
+interface Storage : ForListOfLists {
+    fun addItemToList(listId: Pair<User, ListName>, toDoItem: ToDoItem)
 }

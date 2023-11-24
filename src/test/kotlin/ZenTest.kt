@@ -1,7 +1,9 @@
 import com.ubertob.pesticide.core.*
+import org.junit.jupiter.api.DynamicContainer
 import strikt.api.expectThat
 import strikt.assertions.containsExactlyInAnyOrder
 import strikt.assertions.isEqualTo
+import java.util.stream.Stream
 
 class ZenTest : ZenDDT(allActions()) {
     private val satan by NamedActor(::TodoListOwner)
@@ -30,18 +32,41 @@ class ZenTest : ZenDDT(allActions()) {
             satan.`can see #listname with #expected`(ListName("home"), satansTodoList)
         )
     }
+
+    @DDT
+    fun `the list owner can add a new item`(): Stream<DynamicContainer> {
+        val shopping = ListName("shopping")
+        val rolls = ToDoItem("rolls")
+        val butter = ToDoItem("butter")
+        val ham = ToDoItem("ham")
+
+        return ddtScenario {
+            setUp {
+                me.`starts with a list`(ToDoList(shopping))
+            }.thenPlay(
+                me.`can add #item to #listname`(rolls, shopping),
+                me.`can add #item to #listname`(butter, shopping),
+                me.`can add #item to #listname`(ham, shopping),
+                me.`can see #listname with #expected`(shopping, ToDoList(shopping, listOf(rolls, butter, ham)))
+            )
+        }
+    }
 }
 
 class TodoListOwner(override val name: String) : DdtActor<ZenActions>() {
     val user = User(name)
     fun `can see list of TODOs #todos`(expected: ToDoList) = step(expected) {
-        val actual = listOfLists(User(name))
+        val actual = listOfLists(user)
         expectThat(actual).containsExactlyInAnyOrder(expected)
     }
 
     fun `can see #listname with #expected`(listName: ListName, expected: ToDoList) = step(listName, expected) {
-        val actual = todoList(User(name) to listName)
+        val actual = todoList(user to listName)
         expectThat(actual).isEqualTo(expected)
+    }
+
+    fun `can add #item to #listname`(toDoItem: ToDoItem, listName: ListName) = step(toDoItem, listName) {
+        addListItem(user to listName, toDoItem)
     }
 }
 
@@ -49,6 +74,7 @@ interface ZenActions : DdtActions<DdtProtocol> {
     fun TodoListOwner.`starts with a list`(toDoList: ToDoList)
     fun listOfLists(user: User): List<ToDoList>
     fun todoList(listId: Pair<User, ListName>): ToDoList?
+    fun addListItem(listId: Pair<User, ListName>, toDoItem: ToDoItem): Unit
 }
 
 fun allActions() = setOf(

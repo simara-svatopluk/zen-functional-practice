@@ -8,6 +8,6 @@ fun main() {
         )
     )
     createHttpApplication(
-        hub = ZenHub(defaultLists)
+        hub = ZenHub(MemoryStorage(defaultLists.toMutableMap()))
     ).start()
 }

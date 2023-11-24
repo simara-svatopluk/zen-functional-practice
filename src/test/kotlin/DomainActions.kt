@@ -5,10 +5,14 @@ import com.ubertob.pesticide.core.Ready
 
 class DomainActions : ZenActions {
     override val protocol: DdtProtocol = DomainOnly
+    override fun addListItem(listId: Pair<User, ListName>, toDoItem: ToDoItem) {
+        hub.addItemToList(listId, toDoItem)
+    }
+
     override fun prepare(): DomainSetUp = Ready
 
     private val lists: MutableMap<User, List<ToDoList>> = mutableMapOf()
-    private val hub = ZenHub(lists)
+    private val hub = ZenHub(MemoryStorage(lists))
 
     override fun TodoListOwner.`starts with a list`(toDoList: ToDoList) {
         lists[user] = listOf(toDoList)
