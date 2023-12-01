@@ -32,7 +32,7 @@ class HttpActions(val env: String = "local") : ZenActions {
 
     override fun tearDown(): HttpActions = also { server.stop() }
 
-    override fun listOfLists(user: User): List<ToDoList> = listOfTodosPath(user)
+    override fun listOfLists(user: User): List<ListName> = listOfTodosPath(user)
         .let(::createGetRequest)
         .let(client)
         .body.toString()
@@ -76,8 +76,8 @@ class HttpActions(val env: String = "local") : ZenActions {
 
     private fun listOfTodosPath(user: User) = "${user.name}/"
 
-    private fun parseListOfTodoLists(body: String): List<ToDoList> = parseLIs(body)
-        .map { ToDoList(ListName(it)) }
+    private fun parseListOfTodoLists(body: String): List<ListName> = parseLIs(body)
+        .map { ListName(it) }
 
     private fun parseLIs(body: String): List<String> = "<li>([^<>]+)</li>"
         .toRegex()

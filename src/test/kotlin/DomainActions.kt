@@ -18,6 +18,6 @@ class DomainActions : ZenActions {
         lists[user] = listOf(toDoList)
     }
 
-    override fun listOfLists(user: User): List<ToDoList> = hub.listOfLists(user)
-    override fun todoList(listId: Pair<User, ListName>): ToDoList? = hub.todoList(listId)
+    override fun listOfLists(user: User): List<ListName> = hub.getLists(user).map { it.name }
+    override fun todoList(listId: Pair<User, ListName>): ToDoList? = hub.getList(listId)
 }

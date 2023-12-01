@@ -14,14 +14,14 @@ data class ZenFunctionalHttp(
         "/{user}/" bind Method.GET to { request ->
             request
                 .let(::parseUser)
-                .let(zenHub::listOfLists)
+                .let(zenHub::getLists)
                 .let(::renderListOfLists)
                 .let(::createResponse)
         },
         "{user}/{list}" bind Method.GET to { request ->
             request
                 .let(::parseListId)
-                .let(zenHub::todoList)
+                .let(zenHub::getList)
                 .let(::renderTodoList)
                 .let(::createResponse)
         },

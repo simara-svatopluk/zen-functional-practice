@@ -2,6 +2,7 @@ import com.ubertob.pesticide.core.*
 import org.junit.jupiter.api.DynamicContainer
 import strikt.api.expectThat
 import strikt.assertions.containsExactlyInAnyOrder
+import strikt.assertions.isEmpty
 import strikt.assertions.isEqualTo
 import java.util.stream.Stream
 
@@ -16,11 +17,26 @@ class ZenTest : ZenDDT(allActions()) {
     private val myTodoList = ToDoList(ListName("Home"))
 
     @DDT
+    fun `new user have no lists`() = ddtScenario {
+        play(me.`can not see any list`())
+    }
+
+    @DDT
+    fun `only owner can see all their lists`() = ddtScenario {
+        setUp {
+            satan.`starts with a list`(satansTodoList)
+        }.thenPlay(
+            me.`can not see any list`(),
+            satan.`can see list of TODOs #todos`(satansTodoList.name)
+        )
+    }
+
+    @DDT
     fun `can see list of lists`() = ddtScenario {
         setUp {
             me.`starts with a list`(myTodoList)
         }.thenPlay(
-            me.`can see list of TODOs #todos`(myTodoList),
+            me.`can see list of TODOs #todos`(myTodoList.name),
         )
     }
 
@@ -55,7 +71,7 @@ class ZenTest : ZenDDT(allActions()) {
 
 class TodoListOwner(override val name: String) : DdtActor<ZenActions>() {
     val user = User(name)
-    fun `can see list of TODOs #todos`(expected: ToDoList) = step(expected) {
+    fun `can see list of TODOs #todos`(expected: ListName) = step(expected) {
         val actual = listOfLists(user)
         expectThat(actual).containsExactlyInAnyOrder(expected)
     }
@@ -68,11 +84,16 @@ class TodoListOwner(override val name: String) : DdtActor<ZenActions>() {
     fun `can add #item to #listname`(toDoItem: ToDoItem, listName: ListName) = step(toDoItem, listName) {
         addListItem(user to listName, toDoItem)
     }
+
+    fun `can not see any list`() = step {
+        val actual = listOfLists(user)
+        expectThat(actual).isEmpty()
+    }
 }
 
 interface ZenActions : DdtActions<DdtProtocol> {
     fun TodoListOwner.`starts with a list`(toDoList: ToDoList)
-    fun listOfLists(user: User): List<ToDoList>
+    fun listOfLists(user: User): List<ListName>
     fun todoList(listId: Pair<User, ListName>): ToDoList?
     fun addListItem(listId: Pair<User, ListName>, toDoItem: ToDoItem): Unit
 }
